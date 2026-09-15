@@ -1,0 +1,11 @@
+.env
+*.env
+
+__pycache__/
+.noname/
+env/
+
+db.sqlite3
+staticfiles/
+
+static/

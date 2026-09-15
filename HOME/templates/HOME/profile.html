@@ -1,0 +1,326 @@
+{% extends "base.html" %}
+{% load static %}
+
+{% block title %}Profile · {{ project_name }}{% endblock %}
+
+{% block content %}
+<section class="profile-shell">
+  <div class="profile-header-bar">
+    <h1>Profile</h1>
+    {% if show_staff_dashboard %}
+      <a href="{% url 'home:add_news' %}" class="profile-add-news-link" data-add-news-link> <b>+</b> NeWs</a>
+    {% endif %}
+  </div>
+
+  <div class="profile-layout">
+    <aside class="profile-summary" aria-label="Profile settings">
+      <div class="profile-identity-row">
+        <div class="profile-avatar-wrap">
+          <img src="{{ user.profile_img}}" alt="{{ user.email }} avatar" class="profile-avatar" onerror="this.onerror=null;this.src='/static/404.jpg';">
+        </div>
+
+        <div class="profile-identity-copy">
+          <h2>{% if profile and profile.full_name %}{{ profile.full_name }}{% else %}{{ user.email|cut:"@"|title }}{% endif %}</h2>
+          <p class="profile-role">
+            {% if is_admin_user %}Admin{% elif is_staff_user %}Staff{% else %}Member account{% endif %}
+          </p>
+        </div>
+      </div>
+
+      <div class="profile-info-list">
+        <div><span>Joined</span><strong>{{ user.date_joined|date:"M d, Y" }}</strong></div>
+        <div><span>Last login</span><strong>{{ user.last_login|date:"M d, Y H:i"|default:"Not recorded" }}</strong></div>
+        <div><span>Active sessions</span><strong>{{ user_sessions|length }}</strong></div>
+      </div>
+
+      <div class="profile-setting-block">
+        <div class="setting-row">
+          <div class="setting-copy">
+            <span class="setting-label">Newsletter</span>
+            <small>{% if user.receive_email_login_alert %}Receiving updates{% else %}Not receiving updates{% endif %}</small>
+          </div>
+          <div class="newsletter-toggle-wrap">
+            <button
+              type="button"
+              class="toggle-switch {% if user.receive_email_login_alert %}is-on{% endif %}"
+              aria-pressed="{{ user.receive_email_login_alert|yesno:'true,false' }}"
+              data-newsletter-toggle
+              data-enable-url="{% url 'home:profile_newsletter_toggle' %}"
+              data-enabled="{{ user.receive_email_login_alert|yesno:'true,false' }}">
+              <span class="toggle-thumb"></span>
+            </button>
+          </div>
+        </div>
+      </div>
+
+      <div class="profile-actions profile-image-actions">
+        <div class="profile-image-link-form">
+          <label class="visually-hidden" for="profile-image-url">Profile image URL</label>
+          <input id="profile-image-url" type="url" name="image_url" placeholder="Paste image URL for Preview before update" autocomplete="off">
+          <div class="profile-image-actions-row">
+            <button type="button" class="profile-action-btn preview-image-btn" data-preview-profile-image >Preview</button>
+            <button type="button" class="profile-action-btn primary save-image-btn" data-save-profile-image>Update  pic (link)</button>
+          </div>
+        </div>
+        <button type="button" class="profile-action-btn">Upload avatar (file)</button>
+      </div>
+    </aside>
+
+    <main class="profile-main">
+      {% if show_staff_dashboard %}
+        <section class="profile-card profile-panel staff-panel" id="staff-access">
+          <div class="panel-header">
+            <h3>Staff Profile</h3>
+            <span class="panel-tag">{{ profile.get_role_display|default:"Staff" }}</span>
+          </div>
+          <p class="staff-panel-intro">Customize apperance .</p>
+
+          <form class="staff-profile-form" method="post" action="{% url 'home:profile_staff_update' %}" data-staff-profile-form data-endpoint="{% url 'home:profile_staff_update' %}" novalidate>
+            {% csrf_token %}
+
+            <div class="staff-field">
+              <label for="staff-full-name">Full name</label>
+              <input id="staff-full-name" type="text" name="full_name" maxlength="100" value="{{ profile.full_name|default:'' }}" required>
+              <small>Name for public search.</small>
+            </div>
+
+            <div class="staff-field">
+              <label for="staff-gender">Gender</label>
+              <select id="staff-gender" name="gender" {% if not is_admin_user %}disabled{% endif %}>
+                <option value="" {% if not profile or not profile.gender %}selected{% endif %}>Select gender</option>
+                {% for value, label in gender_choices %}
+                  <option value="{{ value }}" {% if profile and profile.gender == value %}selected{% endif %}>{{ label }}</option>
+                {% endfor %}
+              </select>
+              <small>{% if is_admin_user %}Pronoun identification.{% else %}Admin only.{% endif %}</small>
+            </div>
+
+            <div class="staff-field">
+              <label for="staff-twitter">X (Twitter) URL</label>
+              <input id="staff-twitter" type="url" name="twitter_handle" value="{{ profile.twitter_handle|default:'' }}" placeholder="https://x.com/handle">
+            </div>
+
+            <div class="staff-field">
+              <label for="staff-facebook">Facebook URL</label>
+              <input id="staff-facebook" type="url" name="facebook_handle" value="{{ profile.facebook_handle|default:'' }}" placeholder="https://facebook.com/page">
+            </div>
+
+            <div class="staff-field">
+              <label for="staff-whatsapp">WhatsApp URL</label>
+              <input id="staff-whatsapp" type="url" name="whatsapp_handle" value="{{ profile.whatsapp_handle|default:'' }}" placeholder="https://wa.me/234...">
+            </div>
+
+            <div class="staff-field">
+              <label for="staff-speciality">Speciality</label>
+              <input id="staff-speciality" type="text" name="speciality" value="{{ speciality_csv }}" placeholder="e.g. Politics, Education" {% if not is_admin_user %}disabled{% endif %}>
+              <small>Comma separated tags shown on your stories.{% if not is_admin_user %} Admin only.{% endif %}</small>
+            </div>
+
+            <div class="staff-field staff-field-wide">
+              <label for="staff-bio">Bio</label>
+              <textarea id="staff-bio" name="bio" rows="4" placeholder="Tell readers about yourself...">{{ profile.bio|default:'' }}</textarea>
+            </div>
+
+            <div class="staff-form-actions staff-field-wide">
+              <button type="submit" class="profile-action-btn primary" data-staff-save-btn>Save changes</button>
+            </div>
+          </form>
+        </section>
+      {% endif %}
+
+      {% if show_staff_dashboard %}
+        <section class="profile-card profile-panel" id="published-stories">
+          <div class="panel-header">
+            <h3>Published stories</h3>
+            <span class="panel-tag">{{ stories_page_obj.paginator.count }} total</span>
+          </div>
+          <div id="profile-published-list" class="profile-bookmark-shell" data-published-page="{{ stories_page_obj.number }}" data-published-endpoint="{% url 'home:profile_published' %}">
+            {% if published_stories %}
+            <ul class="profile-list">
+              {% for blog in published_stories %}
+              <li>
+                <div>
+                  <strong>{{ blog.heading }}</strong>
+                  <small>{{ blog.views }} view{{ blog.views|pluralize }} &bull; {{ blog.date_created|date:"M d, Y" }}</small>
+                </div>
+                <a href="{% url 'blog:story_detail' blog.id %}">Open</a>
+              </li>
+              {% endfor %}
+            </ul>
+            {% else %}
+            <p class="empty-copy">No stories published yet.</p>
+            {% endif %}
+          </div>
+
+          {% if stories_page_obj.paginator.num_pages > 1 %}
+          <nav class="story-pagination profile-published-pagination" aria-label="Published stories pagination">
+            {% if stories_page_obj.has_previous %}
+              <button type="button" class="story-page-btn page-nav" data-published-page-btn data-page="{{ stories_page_obj.previous_page_number }}">Prev</button>
+            {% endif %}
+
+            {% for page_num in stories_page_range %}
+              {% if page_num == stories_page_obj.paginator.ELLIPSIS %}
+                <span class="story-page-btn is-ellipsis" aria-hidden="true">{{ page_num }}</span>
+              {% else %}
+                <button type="button" class="story-page-btn {% if page_num == stories_page_obj.number %}is-active{% endif %}"
+                        data-published-page-btn data-page="{{ page_num }}"
+                        aria-label="Go to page {{ page_num }}"
+                        {% if page_num == stories_page_obj.number %}aria-current="page"{% endif %}>{{ page_num }}</button>
+              {% endif %}
+            {% endfor %}
+
+            {% if stories_page_obj.has_next %}
+              <button type="button" class="story-page-btn page-nav" data-published-page-btn data-page="{{ stories_page_obj.next_page_number }}">Next</button>
+            {% endif %}
+          </nav>
+          {% endif %}
+        </section>
+      {% endif %}
+
+      <section class="profile-card profile-panel" id="recent-bookmarks">
+        <div class="panel-header">
+          <h3>Recent bookmarks</h3>
+          <span class="panel-tag">Latest</span>
+        </div>
+        <div id="profile-bookmarks-list" class="profile-bookmark-shell" data-bookmark-page="{{ bookmark_page_obj.number }}" data-bookmark-endpoint="{% url 'home:profile_bookmarks' %}">
+          {% if recent_bookmarks %}
+          <ul class="profile-list">
+            {% for bookmark in recent_bookmarks %}
+            <li>
+              <div>
+                <strong>{{ bookmark.blog.heading }}</strong>
+                <small>{{ bookmark.created_at|date:"M d, Y" }}</small>
+              </div>
+              <a href="{% url 'blog:story_detail' bookmark.blog_id %}">Open</a>
+            </li>
+            {% endfor %}
+          </ul>
+          {% else %}
+          <p class="empty-copy">No bookmarks saved yet.</p>
+          {% endif %}
+        </div>
+
+        {% if bookmark_page_obj.paginator.num_pages > 1 %}
+        <nav class="story-pagination profile-bookmark-pagination" aria-label="Bookmark pagination">
+          {% if bookmark_page_obj.has_previous %}
+            <button type="button" class="story-page-btn page-nav" data-bookmark-page-btn data-page="{{ bookmark_page_obj.previous_page_number }}">Prev</button>
+          {% endif %}
+
+          {% for page_num in bookmark_page_range %}
+            {% if page_num == bookmark_page_obj.paginator.ELLIPSIS %}
+              <span class="story-page-btn is-ellipsis" aria-hidden="true">{{ page_num }}</span>
+            {% else %}
+              <button type="button" class="story-page-btn {% if page_num == bookmark_page_obj.number %}is-active{% endif %}"
+                      data-bookmark-page-btn data-page="{{ page_num }}"
+                      aria-label="Go to page {{ page_num }}"
+                      {% if page_num == bookmark_page_obj.number %}aria-current="page"{% endif %}>{{ page_num }}</button>
+            {% endif %}
+          {% endfor %}
+
+          {% if bookmark_page_obj.has_next %}
+            <button type="button" class="story-page-btn page-nav" data-bookmark-page-btn data-page="{{ bookmark_page_obj.next_page_number }}">Next</button>
+          {% endif %}
+        </nav>
+        {% endif %}
+      </section>
+
+      <section class="profile-card profile-panel" id="reading-history">
+        <div class="panel-header">
+          <h3>Reading history</h3>
+        </div>
+        <div id="profile-history-list" class="profile-bookmark-shell" data-history-page="{{ history_page_obj.number }}" data-history-endpoint="{% url 'home:profile_history' %}">
+          {% if reading_history %}
+          <ul class="profile-list">
+            {% for blog in reading_history %}
+            <li>
+              <div>
+                <strong>{{ blog.heading }}</strong>
+                <small>{{ blog.date_created|date:"M d, Y" }}</small>
+              </div>
+              <a href="{% url 'blog:story_detail' blog.id %}">Open</a>
+            </li>
+            {% endfor %}
+          </ul>
+          {% else %}
+          <p class="empty-copy">No reading history yet.</p>
+          {% endif %}
+        </div>
+
+        {% if history_page_obj.paginator.num_pages > 1 %}
+        <nav class="story-pagination profile-history-pagination" aria-label="Reading history pagination">
+          {% if history_page_obj.has_previous %}
+            <button type="button" class="story-page-btn page-nav" data-history-page-btn data-page="{{ history_page_obj.previous_page_number }}">Prev</button>
+          {% endif %}
+
+          {% for page_num in history_page_range %}
+            {% if page_num == history_page_obj.paginator.ELLIPSIS %}
+              <span class="story-page-btn is-ellipsis" aria-hidden="true">{{ page_num }}</span>
+            {% else %}
+              <button type="button" class="story-page-btn {% if page_num == history_page_obj.number %}is-active{% endif %}"
+                      data-history-page-btn data-page="{{ page_num }}"
+                      aria-label="Go to page {{ page_num }}"
+                      {% if page_num == history_page_obj.number %}aria-current="page"{% endif %}>{{ page_num }}</button>
+            {% endif %}
+          {% endfor %}
+
+          {% if history_page_obj.has_next %}
+            <button type="button" class="story-page-btn page-nav" data-history-page-btn data-page="{{ history_page_obj.next_page_number }}">Next</button>
+          {% endif %}
+        </nav>
+        {% endif %}
+      </section>
+
+      <section class="profile-card profile-panel" id="recent-comments">
+        <div class="panel-header">
+          <h3>Recent comments</h3>
+        </div>
+        <div id="profile-comments-list" class="profile-bookmark-shell" data-comments-page="{{ comments_page_obj.number }}" data-comments-endpoint="{% url 'home:profile_comments' %}">
+          {% if recent_comments %}
+          <ul class="profile-list">
+            {% for comment in recent_comments %}
+            <li>
+              <div>
+                <strong>{{ comment.blog.heading }}</strong>
+                <small>{{ comment.content|truncatechars:85 }}</small>
+              </div>
+              <a href="{% url 'blog:story_detail' comment.blog_id %}">View</a>
+            </li>
+            {% endfor %}
+          </ul>
+          {% else %}
+          <p class="empty-copy">No comments yet.</p>
+          {% endif %}
+        </div>
+
+        {% if comments_page_obj.paginator.num_pages > 1 %}
+        <nav class="story-pagination profile-comments-pagination" aria-label="Comments pagination">
+          {% if comments_page_obj.has_previous %}
+            <button type="button" class="story-page-btn page-nav" data-comments-page-btn data-page="{{ comments_page_obj.previous_page_number }}">Prev</button>
+          {% endif %}
+
+          {% for page_num in comments_page_range %}
+            {% if page_num == comments_page_obj.paginator.ELLIPSIS %}
+              <span class="story-page-btn is-ellipsis" aria-hidden="true">{{ page_num }}</span>
+            {% else %}
+              <button type="button" class="story-page-btn {% if page_num == comments_page_obj.number %}is-active{% endif %}"
+                      data-comments-page-btn data-page="{{ page_num }}"
+                      aria-label="Go to page {{ page_num }}"
+                      {% if page_num == comments_page_obj.number %}aria-current="page"{% endif %}>{{ page_num }}</button>
+            {% endif %}
+          {% endfor %}
+
+          {% if comments_page_obj.has_next %}
+            <button type="button" class="story-page-btn page-nav" data-comments-page-btn data-page="{{ comments_page_obj.next_page_number }}">Next</button>
+          {% endif %}
+        </nav>
+        {% endif %}
+      </section>
+    </main>
+  </div>
+</section>
+{% endblock %}
+
+{% block extra_head %}
+{{ block.super }} {% comment %} TO CLONE THE PARENT CONTNT FOR EXTRA HEAD FIRST ISTEAD OF OVERIDING {% endcomment %}
+<link rel="stylesheet" href="{% static 'home/css/profile.css' %}">
+{% endblock %}
