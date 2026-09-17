@@ -31,7 +31,8 @@ INSTALLED_APPS = [
     'AUTHENTICATION',
     'BLOG',
     'HOME',
-    'STAFF'
+    'STAFF',
+    'ADMIN'
     
 ]
 

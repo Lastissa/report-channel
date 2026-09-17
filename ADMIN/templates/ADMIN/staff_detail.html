@@ -1,0 +1,227 @@
+{% extends "base.html" %}
+{% load static %}
+
+{% block title %}{{ staff_display_name }} · Staff record{% endblock %}
+
+{% block content %}
+<section class="profile-shell staff-record-shell"
+         data-staff-id="{{ staff_account.id }}"
+         data-tribute-endpoint="{% url 'control:staff_tribute' staff_account.id %}"
+         data-role-endpoint="{% url 'control:staff_role' staff_account.id %}"
+         data-status-endpoint="{% url 'control:staff_status' staff_account.id %}">
+
+  {% csrf_token %}
+
+  <div class="profile-header-bar">
+    <h1>Staff record</h1>
+    <a href="{% url 'home:profile' %}" class="profile-add-news-link">Back to profile</a>
+  </div>
+
+  <div class="profile-layout">
+
+    <aside class="profile-summary" aria-label="Staff authority controls">
+      <div class="profile-identity-copy staff-record-identity">
+        <h2 class="staff-record-name">{{ staff_display_name }}</h2>
+        <p class="profile-role">
+          {{ staff_authority }}{% if staff_has_profile %} &bull; {{ staff_role_label }}{% else %} &bull; No staff profile{% endif %}
+        </p>
+        <p class="staff-record-email">{{ staff_account.email }}</p>
+      </div>
+
+      <div class="profile-info-list">
+        <div><span>Joined</span><strong>{{ staff_account.date_joined|date:"M d, Y" }}</strong></div>
+        <div><span>Last login</span><strong>{{ staff_account.last_login|date:"M d, Y H:i"|default:"Not recorded" }}</strong></div>
+        <div><span>Last promotion</span><strong data-staff-last-promotion>{{ staff_profile.last_promotion|date:"M d, Y"|default:"No record" }}</strong></div>
+      </div>
+
+      {% if not can_edit_staff %}
+      <p class="staff-record-note">Read only. Only a superuser can edit another staff record.</p>
+      {% endif %}
+
+      {% if not staff_has_profile %}
+      <p class="staff-record-note">This account has no staff profile, so there is nothing to edit here.</p>
+      {% endif %}
+
+      <!--  READ AND WRITE: TRIBUTE
+            Written by the admin team about the staff member. Distinct from the
+            staff member's own bio, which stays read only above. -->
+      <div class="profile-setting-block staff-record-block">
+        <div class="staff-record-block-head">
+          <span class="setting-label">Tribute</span>
+          <small>{% if can_edit_staff %}Editable{% else %}Read only{% endif %}</small>
+        </div>
+        <textarea class="staff-record-textarea" data-tribute-input rows="5"
+                  placeholder="No tribute written yet."
+                  {% if not can_edit_staff or not staff_has_profile %}disabled{% endif %}>{{ staff_profile.tribute_bio|default:"" }}</textarea>
+        {% if can_edit_staff and staff_has_profile %}
+        <button type="button" class="profile-action-btn primary" data-tribute-save>Save tribute</button>
+        {% endif %}
+        <p class="staff-record-feedback" data-tribute-feedback role="status" aria-live="polite"></p>
+      </div>
+
+      <!--  READ AND WRITE: ROLE
+            Options come from SERVICE_INTERNAL.config.StaffConfig, which reads
+            STAFF.models.STAFF_ROLE. Editing that tuple updates this dropdown and
+            every other role dropdown in the project at once. Protected roles
+            (Founder) are never offered here. -->
+      <div class="profile-setting-block staff-record-block">
+        <div class="staff-record-block-head">
+          <span class="setting-label">Role</span>
+          <small>{% if can_edit_staff %}Editable{% else %}Read only{% endif %}</small>
+        </div>
+        <select class="staff-record-select" data-role-input
+                {% if not can_edit_staff or not staff_has_profile %}disabled{% endif %}>
+          {% if staff_profile.role in protected_roles %}
+            <option value="{{ staff_profile.role }}" selected disabled>{{ staff_role_label }} (locked)</option>
+          {% endif %}
+          {% for value, label in role_choices %}
+            <option value="{{ value }}" {% if staff_profile.role == value %}selected{% endif %}>{{ label }}</option>
+          {% endfor %}
+        </select>
+        {% if can_edit_staff and staff_has_profile %}
+        <button type="button" class="profile-action-btn primary" data-role-save>Update role</button>
+        {% endif %}
+        <p class="staff-record-feedback" data-role-feedback role="status" aria-live="polite"></p>
+      </div>
+
+      <!--  READ AND WRITE: ACCOUNT STATUS
+            Suspending flips Auth.is_active and drops every session the account
+            holds, so the ban bites immediately. It never deletes an account. -->
+      <div class="profile-setting-block staff-record-block">
+        <div class="setting-row">
+          <div class="setting-copy">
+            <span class="setting-label">Account access</span>
+            <small data-status-label>{% if staff_account.is_active %}Active{% else %}Suspended, sessions ended{% endif %}</small>
+          </div>
+          <button type="button"
+                  class="toggle-switch {% if staff_account.is_active %}is-on{% endif %}"
+                  data-status-toggle
+                  aria-pressed="{% if staff_account.is_active %}true{% else %}false{% endif %}"
+                  aria-label="Toggle account access"
+                  {% if not can_edit_staff or not staff_has_profile %}disabled{% endif %}>
+            <span class="toggle-knob"></span>
+          </button>
+        </div>
+        <p class="staff-record-feedback" data-status-feedback role="status" aria-live="polite"></p>
+      </div>
+    </aside>
+
+    <main class="profile-main">
+
+      <!--  READ ONLY BLOCK
+            Reading history, bookmarks, the profile image URL and the newsletter
+            preference are deliberately absent from this page. They belong to the
+            staff member and no admin overrides them from here. -->
+      <section class="profile-card profile-panel" id="staff-record-readonly">
+        <div class="panel-header">
+          <h3>Staff details</h3>
+          <span class="panel-tag">Read only</span>
+        </div>
+
+        {% if staff_has_profile %}
+        <dl class="staff-record-grid">
+          <div>
+            <dt>Full name</dt>
+            <dd>{{ staff_profile.full_name|default:"NO USERNAME" }}</dd>
+          </div>
+          <div>
+            <dt>Gender</dt>
+            <dd>{{ staff_gender_label|default:"Not set" }}</dd>
+          </div>
+          <div class="staff-record-wide">
+            <dt>Socials</dt>
+            <dd>
+              {% if staff_socials %}
+                <ul class="staff-record-socials">
+                  {% for social in staff_socials %}
+                    <li><a href="{{ social.url }}" target="_blank" rel="noopener noreferrer">{{ social.label }}</a></li>
+                  {% endfor %}
+                </ul>
+              {% else %}
+                No socials added.
+              {% endif %}
+            </dd>
+          </div>
+          <div class="staff-record-wide">
+            <dt>Speciality</dt>
+            <dd>
+              {% if staff_speciality %}
+                <ul class="staff-record-tags">
+                  {% for item in staff_speciality %}<li>{{ item }}</li>{% endfor %}
+                </ul>
+              {% else %}
+                No speciality set.
+              {% endif %}
+            </dd>
+          </div>
+          <div class="staff-record-wide">
+            <dt>Bio</dt>
+            <dd>{{ staff_profile.bio|default:"No bio written."|linebreaksbr }}</dd>
+          </div>
+        </dl>
+        {% else %}
+        <p class="empty-copy">
+          This account carries staff access but has no staff profile record, so there are no
+          details to show. The staff member needs to complete their profile first.
+        </p>
+        {% endif %}
+      </section>
+
+      <!--  PUBLISHED NEWS: READ ONLY, SAME PAGINATION AS THE PROFILE PANELS -->
+      <section class="profile-card profile-panel" id="staff-record-published">
+        <div class="panel-header">
+          <h3>Published news</h3>
+          <span class="panel-tag">{{ stories_page_obj.paginator.count }} total</span>
+        </div>
+        <div id="profile-staff-published-list" class="profile-bookmark-shell"
+             data-staff-published-page="{{ stories_page_obj.number }}"
+             data-staff-published-endpoint="{% url 'control:staff_published' staff_account.id %}">
+          {% if published_stories %}
+          <ul class="profile-list staff-directory-list">
+            {% for blog in published_stories %}
+            <li>
+              <div>
+                <strong>{{ blog.heading }}</strong>
+                <small>{{ blog.views }} view{{ blog.views|pluralize }} &bull; {{ blog.date_created|date:"M d, Y" }}</small>
+              </div>
+              <a href="{% url 'blog:story_detail' blog.id %}">Open</a>
+            </li>
+            {% endfor %}
+          </ul>
+          {% else %}
+          <p class="empty-copy">No stories published yet.</p>
+          {% endif %}
+        </div>
+
+        {% if stories_page_obj.paginator.num_pages > 1 %}
+        <nav class="story-pagination profile-staff-published-pagination" aria-label="Published news pagination">
+          {% if stories_page_obj.has_previous %}
+            <button type="button" class="story-page-btn page-nav" data-staff-published-page-btn data-page="{{ stories_page_obj.previous_page_number }}">Prev</button>
+          {% endif %}
+
+          {% for page_num in stories_page_range %}
+            {% if page_num == stories_page_obj.paginator.ELLIPSIS %}
+              <span class="story-page-btn is-ellipsis" aria-hidden="true">{{ page_num }}</span>
+            {% else %}
+              <button type="button" class="story-page-btn {% if page_num == stories_page_obj.number %}is-active{% endif %}"
+                      data-staff-published-page-btn data-page="{{ page_num }}"
+                      aria-label="Go to page {{ page_num }}"
+                      {% if page_num == stories_page_obj.number %}aria-current="page"{% endif %}>{{ page_num }}</button>
+            {% endif %}
+          {% endfor %}
+
+          {% if stories_page_obj.has_next %}
+            <button type="button" class="story-page-btn page-nav" data-staff-published-page-btn data-page="{{ stories_page_obj.next_page_number }}">Next</button>
+          {% endif %}
+        </nav>
+        {% endif %}
+      </section>
+    </main>
+  </div>
+</section>
+{% endblock %}
+
+{% block extra_head %}
+{{ block.super }}
+<link rel="stylesheet" href="{% static 'home/css/profile.css' %}">
+{% endblock %}

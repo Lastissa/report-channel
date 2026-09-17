@@ -27,7 +27,7 @@ FEATURED_COUNT = 5  #   FEATUREAD
 def handler404(request, exception=None):
     """Site wide 404 page. Kept deliberately minimal but still framed by the
     regular header and footer."""
-    return render(request, "home/404.html", status=404)
+    return render(request, "HOME/404.html", status=404)
 
 
 def _bookmarked_ids(user):
@@ -131,7 +131,7 @@ class HomeView(View):
             "page_range": list(paginator.get_elided_page_range(page.number, on_each_side=1, on_ends=1)),
             **_page_context(page, request.user),
         }
-        return render(request, "home/home.html", context)
+        return render(request, "HOME/home.html", context)
 
 
 class LoadMoreView(View):
@@ -158,7 +158,7 @@ class LoadMoreView(View):
         page = paginator.get_page(page_number)
         return render(
             request,
-            "home/partials/story_cards.html",
+            "HOME/partials/story_cards.html",
             {**_page_context(page, request.user), "next_page": page.next_page_number() if page.has_next() else None},
         )
 
@@ -203,7 +203,7 @@ class AddNewsView(View):
         return super().dispatch(request, *args, **kwargs)
 
     def get(self, request):
-        return render(request, "home/add_news.html")
+        return render(request, "HOME/add_news.html")
 
     def post(self, request):
         heading = (request.POST.get("heading") or "").strip()
@@ -273,7 +273,7 @@ class NewsletterSubscribeView(View):
 
 class PrivacyPolicyView(View):
     def get(self, request):
-        return render(request, "home/privacy_policy.html")
+        return render(request, "HOME/privacy_policy.html")
 
 
 class PromoteView(View):
@@ -282,7 +282,7 @@ class PromoteView(View):
     is designed."""
 
     def get(self, request):
-        return render(request, "home/promote.html")
+        return render(request, "HOME/promote.html")
 
 
 class ProfileNewsletterToggleView(View):
@@ -620,6 +620,23 @@ class ProfileView(View):
             raise Http404("Page not found.")
         stories_page = stories_paginator.get_page(stories_page_number)
 
+        #   ADMIN AUTHORITY PANEL: the staff directory only loads for admins
+        #   and superusers, deferred import keeps ADMIN.views free to import
+        #   from HOME.views without a circular reference.
+        staff_directory = []
+        staff_directory_page_obj = None
+        staff_directory_page_range = []
+        if admin_only(request.user):
+            from ADMIN.views import staff_directory_page, staff_directory_rows
+
+            staff_page_number = _resolve_page_number(request.GET.get("staff_page"), default=1)
+            staff_paginator, staff_page = staff_directory_page(staff_page_number)
+            staff_directory = staff_directory_rows(list(staff_page.object_list))
+            staff_directory_page_obj = staff_page
+            staff_directory_page_range = list(
+                staff_paginator.get_elided_page_range(staff_page.number, on_each_side=1, on_ends=1)
+            )
+
         follower_count = FollowRelationship.objects.filter(followee_id=profile.id).count() if profile else 0
         following_count = FollowRelationship.objects.filter(follower_id=profile.id).count() if profile else 0
 
@@ -645,6 +662,9 @@ class ProfileView(View):
             "show_staff_dashboard": staff_only(request.user),
             "user_sessions": _user_sessions_for_profile(request.user, request),
             "gender_choices": GENDER_CHOICES,
+            "staff_directory": staff_directory,
+            "staff_directory_page_obj": staff_directory_page_obj,
+            "staff_directory_page_range": staff_directory_page_range,
             "speciality_csv": ", ".join(profile.speciality) if profile and isinstance(profile.speciality, list) else "",
         }
-        return render(request, "home/profile.html", context)
+        return render(request, "HOME/profile.html", context)
