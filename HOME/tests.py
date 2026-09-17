@@ -1,7 +1,9 @@
 from django.test import TestCase
+from django.core.cache import cache
 
 from AUTHENTICATION.models import Auth
 from BLOG.models import Blog
+from HOME.models import Bookmark
 
 
 class HomePaginationTests(TestCase):
@@ -97,6 +99,22 @@ class ProfileAccessTests(TestCase):
         self.assertContains(response, "data-enable-url")
         self.assertNotContains(response, "hx-post=")
 
+    def test_staff_profile_renders_delete_control_for_own_story(self):
+        staff_user = Auth.objects.create_staff(email="profile-story-owner@example.com")
+        blog = Blog.objects.create(
+            author=staff_user,
+            category="GENERAL",
+            heading="Profile story",
+            content="A short update.",
+        )
+        self.client.force_login(staff_user)
+
+        response = self.client.get("/profile/")
+
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, f"/profile/stories/{blog.id}/delete/")
+        self.assertContains(response, "data-published-story-delete-form")
+
     def test_profile_newsletter_toggle_returns_json_response(self):
         user = Auth.objects.create_user(email="newsletter@example.com")
         user.receive_email_login_alert = True
@@ -135,3 +153,59 @@ class ProfileAccessTests(TestCase):
         self.assertEqual(len(payload["items"]), 5)
         self.assertIn("page_range", payload)
         self.assertIn("has_next", payload)
+
+    def test_bookmark_removal_is_limited_to_two_requests_per_ten_seconds(self):
+        cache.clear()
+        self.addCleanup(cache.clear)
+        user = Auth.objects.create_user(email="limited-bookmarks@example.com")
+        blog = Blog.objects.create(
+            author=user,
+            category="GENERAL",
+            heading="Bookmark rate limit story",
+            content="A short update.",
+        )
+        self.client.force_login(user)
+
+        for _ in range(2):
+            user.bookmarks.create(blog=blog)
+            response = self.client.post(f"/bookmark/{blog.id}/")
+            self.assertEqual(response.status_code, 200)
+            self.assertFalse(response.json()["bookmarked"])
+
+        user.bookmarks.create(blog=blog)
+        response = self.client.post(f"/bookmark/{blog.id}/")
+
+        self.assertEqual(response.status_code, 429)
+        self.assertTrue(Bookmark.objects.filter(user=user, blog=blog).exists())
+
+    def test_staff_can_delete_own_published_story(self):
+        staff_user = Auth.objects.create_staff(email="story-owner@example.com")
+        blog = Blog.objects.create(
+            author=staff_user,
+            category="GENERAL",
+            heading="A story to delete",
+            content="A short update.",
+        )
+        self.client.force_login(staff_user)
+
+        response = self.client.post(f"/profile/stories/{blog.id}/delete/")
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.json()["detail"], "Story deleted.")
+        self.assertFalse(Blog.objects.filter(pk=blog.pk).exists())
+
+    def test_staff_cannot_delete_another_authors_story(self):
+        owner = Auth.objects.create_staff(email="owner@example.com")
+        other_staff = Auth.objects.create_staff(email="other-staff@example.com")
+        blog = Blog.objects.create(
+            author=owner,
+            category="GENERAL",
+            heading="Protected story",
+            content="A short update.",
+        )
+        self.client.force_login(other_staff)
+
+        response = self.client.post(f"/profile/stories/{blog.id}/delete/")
+
+        self.assertEqual(response.status_code, 404)
+        self.assertTrue(Blog.objects.filter(pk=blog.pk).exists())

@@ -39,8 +39,8 @@
           <h3>Bookmark stories, save your reading list, and keep track of updates.</h3>
         </div>
         <div class="footer-auth-actions">
-          <a href="{% url 'auth:login' %}" class="footer-auth-link primary">Sign in</a>
-          <a href="{% url 'auth:register' %}" class="footer-auth-link secondary">Create account</a>
+          <a href="{% url 'auth:login' %}?to={{ request.get_full_path|urlencode }}" class="footer-auth-link primary">Sign in</a>
+          <a href="{% url 'auth:register' %}?to={{ request.get_full_path|urlencode }}" class="footer-auth-link secondary">Create account</a>
         </div>
       </div>
     </div>

@@ -4,11 +4,11 @@ GENDER_CHOICES = [
     ('M', 'Male'),
     ('F', 'Female'),
     ('O', 'Other'),
-    ('N', 'Prefer not to say'),
 ]
 STAFF_ROLE = [
     ('FOUNDER','Founder'),
     ('CO-FOUNDER', 'Co-Founder'),
+    ('SNR-JOURNALIST', 'Snr-Journalist'),
     ('JOURNALIST', 'Journalist'),
 ]
 
@@ -23,7 +23,7 @@ class StaffProfile(models.Model):
     # subsequent handle can be added in the future
     speciality = models.JSONField(default=list, blank=True, null=True)    #   IF THE STAFF HAVE A SPECIAL NICHE ABOUT POST THEY LOVE MAKING
     bio = models.TextField(blank=True, default="")
-    role = models.CharField(max_length=10, choices=STAFF_ROLE, blank=True, default="JOURNALIST")
+    role = models.CharField(max_length=20, choices=STAFF_ROLE, blank=True, default="JOURNALIST")
     tribute_bio = models.TextField(blank=True, null=True)    #   DIFFERENT FROM BIO AS THIS ONE, THE ADMIN WRITE IT FOR THE STAFF
     last_promotion = models.DateField(blank=True, null=True)  #   DIFFERENT FROM THEN THEY CREATED ACCOUNT, THIS CAN BE USED TO SHOW THEY HAVE BEEN PROMOTED WITHING A TIME SPA
     get_blog_notification = models.BooleanField(default=True) #   WETHER TO BEEP THE STAFF WHEN THEIR BLOG GET VIEWWED

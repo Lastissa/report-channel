@@ -11,6 +11,7 @@ CATEGORY = [
     ('WAEC', 'WAEC'),
     ('POSTUTME', 'POSTUTME'),
     ('SCHOLARSHIP', 'SCHOLARSHIP'),
+    ('TECHNOLOGY', 'TECHNOLOGY'),
     ('GENERAL', 'GENERAL'),
 ]
 class Blog(models.Model):

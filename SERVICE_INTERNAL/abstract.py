@@ -28,6 +28,7 @@ def get_client_ip(request)-> str:
 
 def is_rate_limited(request, timeout_window=60, max_requests=10, reset_timeout = False):
     """
+    ### Rate limit the user after the max request so if max is 4 , the 4th getd blocked
     RETURN remaining_time, bool = True => bloc am , false ; leave am
     """
     if request is None:

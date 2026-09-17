@@ -7,7 +7,7 @@ from django.shortcuts import get_object_or_404, redirect, render
 from django.views import View
 
 from AUTHENTICATION.models import Auth
-from SERVICE_INTERNAL.abstract import _optimization
+from SERVICE_INTERNAL.abstract import _optimization, is_rate_limited
 from STAFF.models import StaffProfile
 from .models import Blog, Comment
 
@@ -210,6 +210,9 @@ class BlogLikeView(View):
 
 class CommentCreateView(View):
     def post(self, request, blog_id):
+        remaining_time, limited = is_rate_limited(request, 5, 3, )
+        if limited:
+            return JsonResponse({'detail': f'too many request, wait {remaining_time} seconds and retry'}, status = 429)
         blog = get_object_or_404(Blog, pk=blog_id)
         user = _authenticated_user(request)
         if not user:

@@ -179,6 +179,13 @@ class BookmarkView(View):
 
         existing = Bookmark.objects.filter(user=request.user, blog=blog).first()
         if existing:
+            remaining_time, is_limited = is_rate_limited(request, 10, 2, False)
+            if is_limited:
+                unit = "second" if remaining_time == 1 else "seconds"
+                return _response(
+                    {"detail": f"Too many bookmark removals. Try again in {remaining_time} {unit}."},
+                    status=429,
+                )
             existing.delete()
             return _response({"detail": "Removed from bookmarks.", "bookmarked": False, "bookmark_count": blog.bookmarked_by.count()}, status=200)
 
@@ -455,6 +462,9 @@ class ProfileStaffUpdateView(View):
     """
 
     def post(self, request):
+        remaining_time, is_limited = is_rate_limited(request, 10, 3)
+        if is_limited:
+            return _response({'detail': f'please, wait {remaining_time} seconds before trying again'}, status=429)
         if not staff_only(request.user):
             return JsonResponse({"detail": "Staff access is required."}, status=403)
 
@@ -555,6 +565,21 @@ class ProfilePublishedView(View):
             },
             status=200,
         )
+
+
+class ProfilePublishedDeleteView(View):
+    """Delete a story from its author's profile dashboard."""
+
+    def post(self, request, blog_id):
+        if not staff_only(request.user):
+            return JsonResponse({"detail": "Staff access is required to delete a story."}, status=403)
+
+        blog = Blog.objects.filter(pk=blog_id, author=request.user).first()
+        if blog is None:
+            return JsonResponse({"detail": "Story not found."}, status=404)
+
+        blog.delete()
+        return JsonResponse({"detail": "Story deleted.", "id": blog_id}, status=200)
 
 
 class ProfileView(View):

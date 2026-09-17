@@ -16,8 +16,7 @@ class About:
     domain = getattr(settings, "DOMAIN_NAME") or "http://localhost:8000"
 
     #   CONTACTS - personal / one to one /consultancy
-    ad = "Want us to help advertise your product?"
-    email = contact_email
+    email = "marketing@gmail.com"
     whatsapp_dm = "https://wa.me.09112"
     mobile = "+234xxxxxxxxxxxx"
     
@@ -39,7 +38,6 @@ def custom_context_processors(request):
         'contact_email': About.contact_email,
         'domain': About.domain,
         'nav_categories': CATEGORY,
-        'ad_prompt': About.ad,
         'partnership_email': About.email,
         'whatsapp_dm': About.whatsapp_dm,
         'mobile': About.mobile,

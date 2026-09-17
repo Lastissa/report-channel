@@ -13,6 +13,7 @@ urlpatterns = [
     path("profile/history/", views.ProfileHistoryView.as_view(), name="profile_history"),
     path("profile/comments/", views.ProfileCommentsView.as_view(), name="profile_comments"),
     path("profile/stories/", views.ProfilePublishedView.as_view(), name="profile_published"),
+    path("profile/stories/<int:blog_id>/delete/", views.ProfilePublishedDeleteView.as_view(), name="profile_published_delete"),
     path("profile/settings/newsletter/", views.ProfileNewsletterToggleView.as_view(), name="profile_newsletter_toggle"),
     path("profile/settings/image/", views.ProfileImageUpdateView.as_view(), name="profile_image_update"),
     path("profile/staff/update/", views.ProfileStaffUpdateView.as_view(), name="profile_staff_update"),

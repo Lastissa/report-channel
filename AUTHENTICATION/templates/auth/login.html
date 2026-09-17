@@ -19,6 +19,7 @@
 
     <form method="post" class="auth-form" novalidate data-auth-form data-server-error="{{ error|escapejs }}">
       {% csrf_token %}
+      <input type="hidden" name="to" value="{{ return_to }}">
       <div class="field-group">
         <label for="login-email">Email address</label>
         <input id="login-email" type="email" name="email" placeholder="you@example.com" required autocomplete="email">
@@ -38,7 +39,7 @@
 
     <p class="auth-switch">
       Don’t have an account?
-      <a href="{% url 'auth:register' %}">Create one</a>
+      <a href="{% url 'auth:register' %}?to={{ return_to|urlencode }}">Create one</a>
     </p>
   </div>
 </div>
@@ -137,9 +138,7 @@
               setSubmitBusy(false);
               return;
             }
-            //   LOGGED IN: reload the page, the auth view skips itself for
-            //   authenticated users and forwards them to the newsroom.
-            window.setTimeout(function () { window.location.reload(); }, 600);
+            window.setTimeout(function () { window.location.assign(payload.redirect_to || '/'); }, 600);
           })
           .catch(function () {
             setSubmitBusy(false);

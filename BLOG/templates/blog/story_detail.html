@@ -159,7 +159,7 @@
       <form method="post" action="{% url 'blog:comment_create' blog.id %}" class="comment-form" data-comment-form novalidate>
         {% csrf_token %}
         <label for="comment-input" class="sr-only">Write a comment</label>
-        <textarea id="comment-input" name="comment" rows="4" placeholder="Write your own comment..."></textarea>
+        <textarea id="comment-input" name="comment" rows="4" placeholder="Share Your Though On This Post..."></textarea>
         <button type="submit" class="comment-submit-btn">Post comment</button>
       </form>
 

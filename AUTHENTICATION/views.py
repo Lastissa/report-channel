@@ -1,8 +1,10 @@
 import logging
+from urllib.parse import urlsplit
 
 from django.contrib.auth import authenticate, login, logout
 from django.http import JsonResponse
 from django.shortcuts import redirect, render
+from django.utils.http import url_has_allowed_host_and_scheme
 from django.utils import timezone
 from django.views import View
 from django.contrib import messages
@@ -14,6 +16,32 @@ from SERVICE_INTERNAL.email_single import _try_send_login_email
 logger = logging.getLogger(__name__)
 
 
+def _return_to(request):
+    """Return a safe, local path supplied by the guest auth flow."""
+
+    target = (request.POST.get("to") or request.GET.get("to") or "").strip()
+    if not target or target.startswith(("//", "/\\")):
+        return "/"
+
+    parsed = urlsplit(target)
+    if (
+        not target.startswith("/")
+        or parsed.scheme
+        or parsed.netloc
+        or not url_has_allowed_host_and_scheme(
+            target,
+            allowed_hosts={request.get_host()},
+            require_https=request.is_secure(),
+        )
+    ):
+        return "/"
+    return target
+
+
+def _auth_context(request, **context):
+    return {"return_to": _return_to(request), **context}
+
+
 class LoginView(View):
     def get(self, request): 
         # remaining_time, _rate_limit = is_rate_limited(request, timeout_window=60, max_requests=3)
@@ -21,25 +49,25 @@ class LoginView(View):
         #     messages.error(request, message = f"rate limtit reached {remaining_time}" )
         if request.user.is_authenticated:
             messages.info(request, message=f"Hello {request.user.email}, welcome back.".upper())
-            return redirect('home:home')
-        return render(request, "auth/login.html")
+            return redirect(_return_to(request))
+        return render(request, "auth/login.html", _auth_context(request))
     
     def post(self, request):
         is_ajax = request.headers.get("X-Requested-With") == "XMLHttpRequest"
         # rate limting here
-        remaining_time, _rate_limit = is_rate_limited(request, timeout_window=10, max_requests=2)
+        remaining_time, _rate_limit = is_rate_limited(request, timeout_window=15, max_requests=3)
         if _rate_limit:
             error = f"Too Frequent Request, try again in {remaining_time} seconds"
             if is_ajax:
                 return _response({"detail": error}, status=429)
-            return render(request, 'auth/login.html', {'error': error}, status=429)
+            return render(request, 'auth/login.html', _auth_context(request, error=error), status=429)
 
         email = (request.POST.get("email") or "").strip()
         password = (request.POST.get("password") or "").strip()
         if not email or not password:
             if is_ajax:
                 return _response({"detail": "Email and password are required."}, status=400)
-            return render(request, "auth/login.html", {"error": "Email and password are required."}, status=400)
+            return render(request, "auth/login.html", _auth_context(request, error="Email and password are required."), status=400)
 
         user = authenticate(request, email=email.upper(), password=password)
         if user is not None and user.is_active:
@@ -50,17 +78,17 @@ class LoginView(View):
                 "user_agent": request.META.get("HTTP_USER_AGENT", "Unknown device"),
             }
             login(request, user)
+            return_to = _return_to(request)
             if is_ajax:
-                return _response({"detail": "Login successful."}, status=200)
-            next_url = request.POST.get("next") or request.GET.get("next") or "/"
-            return redirect(next_url)
+                return _response({"detail": "Login successful.", "redirect_to": return_to}, status=200)
+            return redirect(return_to)
         if user is not None and not user.is_active:
             if is_ajax:
                 return _response({"detail": "Account is inactive."}, status=403)
-            return render(request, "auth/login.html", {"error": "Account is inactive."}, status=403)
+            return render(request, "auth/login.html", _auth_context(request, error="Account is inactive."), status=403)
         if is_ajax:
             return _response({"detail": "Invalid email or password."}, status=401)
-        return render(request, "auth/login.html", {"error": "Invalid email or password."}, status=401)
+        return render(request, "auth/login.html", _auth_context(request, error="Invalid email or password."), status=401)
 
 
 class LogoutView(View):
@@ -76,8 +104,8 @@ class RegisterView(View):
     def get(self, request):
         if request.user.is_authenticated:
             messages.info(request, message=f"Hello {request.user.email}, welcome back.".upper())
-            return redirect('home:home')
-        return render(request, "auth/register.html")
+            return redirect(_return_to(request))
+        return render(request, "auth/register.html", _auth_context(request))
 
     def post(self, request):
         is_ajax = request.headers.get("X-Requested-With") == "XMLHttpRequest"
@@ -101,13 +129,14 @@ class RegisterView(View):
         if error is not None:
             if is_ajax:
                 return _response({"detail": error}, status=400)
-            return render(request, "auth/register.html", {"error": error}, status=400)
+            return render(request, "auth/register.html", _auth_context(request, error=error), status=400)
 
         user = get_user_model().objects.create_user(email=email, password=password)
         login(request, user)
+        return_to = _return_to(request)
         if is_ajax:
-            return _response({"detail": "Account created successfully."}, status=200)
-        return redirect("/")
+            return _response({"detail": "Account created successfully.", "redirect_to": return_to}, status=200)
+        return redirect(return_to)
     
 from SERVICE_INTERNAL.abstract import info_logger
 def csrf_failure(request, exception=None, **args):

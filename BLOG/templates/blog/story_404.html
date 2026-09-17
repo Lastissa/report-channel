@@ -2,7 +2,7 @@
 {% load static %}
 
 {% block title %}NOT FOUND | {{ project_name }}{% endblock %}
-{% block meta_description %}This page does not exist on {{ project_name }}.{% endblock %}
+{% block meta_description %}This post does not exist on {{ project_name }} Or have been deleted by the Author{% endblock %}
 
 {% block content %}
 <section class="story-article-shell">
@@ -44,7 +44,7 @@
     </figure>
 
     <div class="story-body">
-      <p>{{ decoy_content }}</p>
+      <p><b>{{ decoy_content }}</b></p>
     </div>
 
     <div class="article-actions">

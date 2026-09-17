@@ -7,8 +7,6 @@
 {% block extra_head %}
   {{ block.super }}
   <style>
-    /* CRITICAL PHASE: the layout is defined immediately but blurred until the
-       heavy editor components arrive. Full polish lives in add-news.css. */
     .editor-shell { max-width: 1400px; margin: 0 auto; padding: 18px 20px 40px; }
     .editor-toolbar { display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap; margin-bottom: 14px; }
     .editor-toolbar h1 { margin: 0; font-size: 1.5rem; color: var(--ink); }
@@ -18,7 +16,7 @@
       border: 1px solid var(--line); border-radius: var(--radius-m); background: var(--nav-bg);
       color: var(--nav-fg); font: inherit; font-weight: 700; font-size: 0.85rem; padding: 9px 14px; cursor: pointer;
     }
-    .editor-publish-btn { background: var(--amber); }
+    .editor-publish-btn { background: var(--amber-alt); }
     .editor-workspace { display: grid; grid-template-columns: 1fr 1fr; gap: 18px; align-items: stretch; }
     .editor-pane {
       border: 1px solid var(--line); border-radius: var(--radius-l); background: var(--surface);
@@ -134,7 +132,7 @@
     }
     window.editorToast = lightToast;
 
-    lightToast("Verify News B4 Publishing");
+    lightToast("Verify News Before Publishing");
 
     var css = document.createElement("link");
     css.rel = "stylesheet";
