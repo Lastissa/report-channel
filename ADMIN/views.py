@@ -19,6 +19,7 @@ from django.views import View
 from AUTHENTICATION.models import Auth
 from BLOG.models import Blog
 from HOME.views import _resolve_page_number
+from SERVICE_INTERNAL.abstract import is_rate_limited
 from SERVICE_INTERNAL.config import StaffConfig
 from SERVICE_INTERNAL.permissions import admin_only
 from STAFF.models import StaffProfile
@@ -95,7 +96,7 @@ class StaffDirectoryView(View):
 
     def get(self, request):
         if not admin_only(request.user):
-            return JsonResponse({"detail": "Admin access is required to view the staff directory."}, status=403)
+            return JsonResponse({"detail": "Admin access is required to view This Page."}, status=403)
 
         page_number = _resolve_page_number(request.GET.get("page"), default=1)
         paginator, page = staff_directory_page(page_number)
@@ -262,7 +263,7 @@ class _SuperuserWriteView(View):
             return None, JsonResponse({"detail": "Admin access is required."}, status=403)
         if not _superuser_only(request.user):
             return None, JsonResponse(
-                {"detail": "Only a superuser can edit another staff record. This view is read only for you."},
+                {"detail": "To Enchance Privacy. This view is read only for you."},
                 status=403,
             )
         account = _staff_account_or_404(staff_id)
@@ -279,6 +280,8 @@ class StaffTributeUpdateView(_SuperuserWriteView):
     staff member's own bio, which stays read only."""
 
     def post(self, request, staff_id):
+        remaining_seconds, limited = is_rate_limited(request, 10, 3)
+        if limited: return JsonResponse({'detail':f'Permission Denied, Wait {remaining_seconds} seconds'}, status = 403)
         resolved, error = self._guard(request, staff_id)
         if error:
             return error
@@ -298,6 +301,8 @@ class StaffRoleUpdateView(_SuperuserWriteView):
     change stamps last_promotion with today."""
 
     def post(self, request, staff_id):
+        remaining_seconds, limited = is_rate_limited(request, 10, 3)
+        if limited: return JsonResponse({'detail':f'Permission Denied, Wait {remaining_seconds} seconds'}, status = 403)
         resolved, error = self._guard(request, staff_id)
         if error:
             return error
@@ -341,6 +346,9 @@ class StaffBanToggleView(_SuperuserWriteView):
     deletes an account."""
 
     def post(self, request, staff_id):
+        remaining_seconds, limited = is_rate_limited(request, 10, 3)
+        if limited: return JsonResponse({'detail':f'Permission Denied, Wait {remaining_seconds} seconds'}, status = 403)
+        
         resolved, error = self._guard(request, staff_id)
         if error:
             return error
@@ -356,13 +364,8 @@ class StaffBanToggleView(_SuperuserWriteView):
         dropped = 0
         if not new_state:
             dropped = _drop_sessions_for(account)
-        logger.info(
-            "Account %s set to %s by %s (%s sessions dropped)",
-            account.email,
-            "active" if new_state else "suspended",
-            request.user.email,
-            dropped,
-        )
+        from SERVICE_INTERNAL.abstract import info_logger
+        info_logger(logger, msg = f"Account {account.email} set to {"active" if new_state else "suspended"} by {request.user.email} ({dropped} sessions dropped)")
 
         return JsonResponse(
             {

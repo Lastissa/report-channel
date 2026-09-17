@@ -68,8 +68,14 @@ class LoginView(View):
             if is_ajax:
                 return _response({"detail": "Email and password are required."}, status=400)
             return render(request, "auth/login.html", _auth_context(request, error="Email and password are required."), status=400)
-
-        user = authenticate(request, email=email.upper(), password=password)
+        user = get_user_model().objects.filter(email__iexact = email).first()
+        if not user.check_password(password):
+            if is_ajax:
+                return JsonResponse({'detail': 'Invalid EMail Or PASSWORD'}, status = 400)
+            return redirect(return_to)
+            
+        
+        # user = authenticate(request, email=email.upper(), password=password)
         if user is not None and user.is_active:
             _try_send_login_email(user)
             request.session["session_meta"] = {
@@ -82,10 +88,11 @@ class LoginView(View):
             if is_ajax:
                 return _response({"detail": "Login successful.", "redirect_to": return_to}, status=200)
             return redirect(return_to)
+        # print(f"xxxxxxxxxxxxxxxxxx --------------- {user.is_active}")
         if user is not None and not user.is_active:
             if is_ajax:
-                return _response({"detail": "Account is inactive."}, status=403)
-            return render(request, "auth/login.html", _auth_context(request, error="Account is inactive."), status=403)
+                return _response({"detail": "Account Have Been Suspended."}, status=403)
+            return render(request, "auth/login.html", _auth_context(request, error="Account Have Been Suspended."), status=403)
         if is_ajax:
             return _response({"detail": "Invalid email or password."}, status=401)
         return render(request, "auth/login.html", _auth_context(request, error="Invalid email or password."), status=401)

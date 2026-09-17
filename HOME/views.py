@@ -466,7 +466,7 @@ class ProfileStaffUpdateView(View):
         if is_limited:
             return _response({'detail': f'please, wait {remaining_time} seconds before trying again'}, status=429)
         if not staff_only(request.user):
-            return JsonResponse({"detail": "Staff access is required."}, status=403)
+            return JsonResponse({"detail": "Staff access is required!. Refresh Page"}, status=403)
 
         profile, _ = StaffProfile.objects.get_or_create(auth=request.user)
 
@@ -531,7 +531,7 @@ class ProfilePublishedView(View):
 
     def get(self, request):
         if not staff_only(request.user):
-            return JsonResponse({"detail": "Staff access is required to view published stories."}, status=401)
+            return JsonResponse({"detail": "Staff access is required to view published stories!. Refresh Page"}, status=401)
 
         page_number = _resolve_page_number(request.GET.get("page"), default=1)
         published_qs = Blog.objects.filter(author=request.user).order_by("-date_created")
@@ -572,7 +572,7 @@ class ProfilePublishedDeleteView(View):
 
     def post(self, request, blog_id):
         if not staff_only(request.user):
-            return JsonResponse({"detail": "Staff access is required to delete a story."}, status=403)
+            return JsonResponse({"detail": "Staff access is required to delete a story!. Refresh Page"}, status=403)
 
         blog = Blog.objects.filter(pk=blog_id, author=request.user).first()
         if blog is None:
