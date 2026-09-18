@@ -7,8 +7,8 @@ work stays in HOME.views; this module only holds the extra authority an admin
 
 import logging
 
-from django.contrib.sessions.models import Session
 from django.core.paginator import Paginator
+from django.db import transaction
 from django.db.models import Q
 from django.http import Http404, JsonResponse
 from django.shortcuts import redirect, render
@@ -22,7 +22,8 @@ from HOME.views import _resolve_page_number
 from SERVICE_INTERNAL.abstract import is_rate_limited
 from SERVICE_INTERNAL.config import StaffConfig
 from SERVICE_INTERNAL.permissions import admin_only
-from STAFF.models import StaffProfile
+from SERVICE_INTERNAL.sessions import drop_sessions_for
+from STAFF.models import GENDER_CHOICES, StaffProfile
 
 logger = logging.getLogger(__name__)
 
@@ -127,19 +128,6 @@ def _staff_account_or_404(staff_id):
     if account is None or not (account.is_staff or account.is_admin or account.is_superuser):
         raise Http404("Staff member not found.")
     return account
-
-
-def _drop_sessions_for(account):
-    """Wipe every active session belonging to an account. Used when a staff
-    member is suspended so the ban bites straight away instead of waiting for
-    their current session to lapse."""
-    dropped = 0
-    for session in Session.objects.filter(session_key__isnull=False).iterator():
-        decoded = session.get_decoded() or {}
-        if str(decoded.get("_auth_user_id")) == str(account.pk):
-            session.delete()
-            dropped += 1
-    return dropped
 
 
 def _published_rows(blog_list):
@@ -363,7 +351,7 @@ class StaffBanToggleView(_SuperuserWriteView):
 
         dropped = 0
         if not new_state:
-            dropped = _drop_sessions_for(account)
+            dropped = drop_sessions_for(account)
         from SERVICE_INTERNAL.abstract import info_logger
         info_logger(logger, msg = f"Account {account.email} set to {"active" if new_state else "suspended"} by {request.user.email} ({dropped} sessions dropped)")
 
@@ -375,4 +363,153 @@ class StaffBanToggleView(_SuperuserWriteView):
                 "sessions_dropped": dropped,
             },
             status=200,
+        )
+
+
+class OwnRoleUpdateView(View):
+    """An admin changes their own role from their own profile page. Other
+    people's records are the staff detail page's business; this endpoint only
+    ever touches request.user and never takes a target id. Every accepted
+    change stamps last_promotion with today, exactly like the detail page."""
+
+    def post(self, request):
+        remaining_seconds, limited = is_rate_limited(request, 10, 3)
+        if limited:
+            return JsonResponse({"detail": f"Permission Denied, Wait {remaining_seconds} seconds"}, status=403)
+        if not admin_only(request.user):
+            return JsonResponse({"detail": "Admin access is required."}, status=403)
+
+        profile = StaffProfile.objects.filter(auth=request.user).first()
+        if profile is None:
+            return JsonResponse(
+                {"detail": "Save your staff profile first, then set your role."}, status=409
+            )
+
+        role = (request.POST.get("role") or "").strip()
+        allowed = {value for value, _ in StaffConfig.role_choices()}
+        if role not in allowed:
+            return JsonResponse({"detail": "That role cannot be assigned."}, status=400)
+
+        if role == profile.role:
+            return JsonResponse(
+                {
+                    "detail": "Role unchanged.",
+                    "role": profile.role,
+                    "role_label": StaffConfig.role_label(profile.role),
+                },
+                status=200,
+            )
+
+        profile.role = role
+        profile.last_promotion = timezone.localdate()
+        profile.save(update_fields=["role", "last_promotion"])
+        logger.info("Role for staff %s set to %s by themselves", request.user.email, role)
+
+        return JsonResponse(
+            {
+                "detail": "Role updated.",
+                "role": role,
+                "role_label": StaffConfig.role_label(role),
+                "last_promotion": profile.last_promotion.strftime("%b %d, %Y"),
+            },
+            status=200,
+        )
+
+
+class StaffCreateView(View):
+    """Full page form for adding a staff account. Admin and superuser only.
+
+    The Auth row and its StaffProfile row are created together: an account
+    without a profile is exactly the broken state the staff directory flags.
+    Flags are whitelisted here rather than read from POST, and nothing on
+    this page can ever grant superuser or delete an account.
+    """
+
+    def get(self, request):
+        if not admin_only(request.user):
+            return redirect("home:profile")
+
+        return self._render(request)
+
+    def post(self, request):
+        remaining_seconds, limited = is_rate_limited(request, 10, 3)
+        if limited:
+            return self._fail(request, f"Permission Denied, Wait {remaining_seconds} seconds")
+        if not admin_only(request.user):
+            if request.headers.get("X-Requested-With") == "XMLHttpRequest":
+                return JsonResponse({"detail": "Admin access is required."}, status=403)
+            return redirect("home:profile")
+
+        email = (request.POST.get("email") or "").strip()
+        password = (request.POST.get("password") or "").strip()
+        full_name = (request.POST.get("full_name") or "").strip()
+        gender = (request.POST.get("gender") or "").strip()
+        role = (request.POST.get("role") or "").strip()
+        grant_admin = request.POST.get("is_admin") == "on"
+
+        error = None
+        if not email or "@" not in email:
+            error = "Enter a valid email address."
+        elif Auth.objects.filter(email__iexact=email).exists():
+            error = "That email already has an account."
+        elif not password or len(password) < 6:
+            error = "The password must be at least 6 characters long."
+        elif not full_name:
+            error = "The full name cannot be empty."
+        elif len(full_name) > 100:
+            error = "The full name is limited to 100 characters."
+        elif gender not in {value for value, _ in GENDER_CHOICES}:
+            error = "Select a valid gender option."
+        elif role not in {value for value, _ in StaffConfig.role_choices()}:
+            error = "Select a valid role."
+
+        if error is not None:
+            return self._fail(request, error)
+
+        #   Flags are whitelisted: only is_staff (always) and is_admin (from
+        #   the checkbox) are ever set. Superuser is granted only through the
+        #   owner's private endpoint, never from this form.
+        with transaction.atomic():
+            account = Auth.objects.create_staff(email=email, password=password, is_admin=grant_admin)
+            StaffProfile.objects.create(auth=account, gender=gender, full_name=full_name, role=role)
+
+        logger.info(
+            "STAFF CREATED: %s (admin=%s) by %s", account.email, grant_admin, request.user.email
+        )
+
+        if request.headers.get("X-Requested-With") == "XMLHttpRequest":
+            return JsonResponse(
+                {
+                    "detail": "Staff account created.",
+                    "redirect_to": reverse("control:staff_detail", args=[account.pk]),
+                },
+                status=201,
+            )
+        return redirect("control:staff_detail", account.pk)
+
+    def _render(self, request, error=None, form_data=None):
+        return render(
+            request,
+            "ADMIN/staff_create.html",
+            {
+                "role_choices": StaffConfig.role_choices(),
+                "gender_choices": StaffConfig.gender_choices(),
+                "form_error": error,
+                "form_data": form_data or {},
+            },
+        )
+
+    def _fail(self, request, error):
+        if request.headers.get("X-Requested-With") == "XMLHttpRequest":
+            return JsonResponse({"detail": error}, status=400)
+        return self._render(
+            request,
+            error=error,
+            form_data={
+                "email": request.POST.get("email", ""),
+                "full_name": request.POST.get("full_name", ""),
+                "gender": request.POST.get("gender", ""),
+                "role": request.POST.get("role", ""),
+                "is_admin": request.POST.get("is_admin") == "on",
+            },
         )

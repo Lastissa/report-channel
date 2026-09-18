@@ -99,7 +99,7 @@
                   aria-pressed="{% if staff_account.is_active %}true{% else %}false{% endif %}"
                   aria-label="Toggle account access"
                   {% if not can_edit_staff or not staff_has_profile %}disabled{% endif %}>
-            <span class="toggle-knob"></span>
+            <span class="toggle-thumb"></span>
           </button>
         </div>
         <p class="staff-record-feedback" data-status-feedback role="status" aria-live="polite"></p>

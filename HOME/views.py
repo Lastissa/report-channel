@@ -1,6 +1,7 @@
 import logging
 
 from django.contrib import messages
+from django.contrib.auth import logout as auth_logout
 from django.contrib.sessions.models import Session
 from django.core.exceptions import BadRequest, ValidationError
 from django.core.paginator import Paginator
@@ -8,6 +9,7 @@ from django.core.validators import URLValidator
 from django.db import IntegrityError
 from django.http import Http404, JsonResponse
 from django.shortcuts import redirect, render
+from django.urls import reverse
 from django.utils import timezone
 from django.utils.text import Truncator
 from django.views import View
@@ -15,7 +17,9 @@ from django.views import View
 from BLOG.models import Blog, CATEGORY, Comment
 from HOME.models import Bookmark
 from SERVICE_INTERNAL.abstract import _response, is_rate_limited
+from SERVICE_INTERNAL.config import StaffConfig
 from SERVICE_INTERNAL.permissions import admin_only, staff_only
+from SERVICE_INTERNAL.sessions import drop_sessions_for
 from STAFF.models import GENDER_CHOICES, FollowRelationship, StaffProfile
 
 logger = logging.getLogger(__name__)
@@ -131,6 +135,8 @@ class HomeView(View):
             "page_range": list(paginator.get_elided_page_range(page.number, on_each_side=1, on_ends=1)),
             **_page_context(page, request.user),
         }
+        from SERVICE_INTERNAL.abstract import _optimization
+        _optimization()
         return render(request, "HOME/home.html", context)
 
 
@@ -302,6 +308,69 @@ class ProfileNewsletterToggleView(View):
                 "detail": "Newsletter updates enabled." if new_state else "Newsletter updates disabled.",
                 "enabled": new_state,
                 "status": "on" if new_state else "off",
+            },
+            status=200,
+        )
+
+
+class ProfileBlogNotificationToggleView(View):
+    """Toggle post-view reminders for staff. This is a staff level setting,
+    not an admin power, so it lives with the other profile toggles rather
+    than in the ADMIN app."""
+
+    def post(self, request):
+        if not staff_only(request.user):
+            return JsonResponse({"detail": "Staff access is required.", "enabled": False}, status=403)
+
+        profile = StaffProfile.objects.filter(auth=request.user).first()
+        if profile is None:
+            return JsonResponse(
+                {"detail": "No staff profile on this account yet. Save your staff profile first.", "enabled": False},
+                status=409,
+            )
+
+        new_state = not profile.get_blog_notification
+        profile.get_blog_notification = new_state
+        profile.save(update_fields=["get_blog_notification"])
+
+        return JsonResponse(
+            {
+                "detail": "Story view reminders enabled." if new_state else "Story view reminders disabled.",
+                "enabled": new_state,
+                "status": "on" if new_state else "off",
+            },
+            status=200,
+        )
+
+
+class ProfileLogoutAllSessionsView(View):
+    """End every session the signed in user holds, the current one included.
+
+    The response is JSON because the fetch caller redirects to the login
+    page itself: the session that made this request is gone by the time the
+    response arrives.
+    """
+
+    def post(self, request):
+        if not request.user.is_authenticated:
+            return JsonResponse({"detail": "Please sign in first."}, status=401)
+
+        remaining_time, is_limited = is_rate_limited(request, 30, 2)
+        if is_limited:
+            return JsonResponse({"detail": f"Too many attempts. Wait {remaining_time} seconds."}, status=429)
+
+        email = request.user.email
+        dropped = drop_sessions_for(request.user)
+        #   flush() clears whatever the session middleware would otherwise
+        #   re-save for this request, so this browser is signed out too.
+        auth_logout(request)
+        logger.info("ACCOUNT LOGOUT ALL: %s ended %d session(s)", email, dropped)
+
+        return JsonResponse(
+            {
+                "detail": f"Signed out of {dropped} session(s).",
+                "sessions_ended": dropped,
+                "redirect_to": reverse("auth:login"),
             },
             status=200,
         )
@@ -640,6 +709,10 @@ class ProfileView(View):
         follower_count = FollowRelationship.objects.filter(followee_id=profile.id).count() if profile else 0
         following_count = FollowRelationship.objects.filter(follower_id=profile.id).count() if profile else 0
 
+        #   Own-role select: only admins and superusers get the choices in
+        #   context, so non-admin pages pay nothing for it.
+        is_admin = admin_only(request.user)
+
         context = {
             "profile": profile,
             "user": request.user,
@@ -658,10 +731,12 @@ class ProfileView(View):
             "follower_count": follower_count,
             "following_count": following_count,
             "is_staff_user": staff_only(request.user),
-            "is_admin_user": getattr(request.user, "is_admin", False) or getattr(request.user, "is_superuser", False),
+            "is_admin_user": is_admin,
             "show_staff_dashboard": staff_only(request.user),
             "user_sessions": _user_sessions_for_profile(request.user, request),
             "gender_choices": GENDER_CHOICES,
+            "role_choices": StaffConfig.role_choices() if is_admin else [],
+            "protected_roles": sorted(StaffConfig.PROTECTED_ROLES) if is_admin else [],
             "staff_directory": staff_directory,
             "staff_directory_page_obj": staff_directory_page_obj,
             "staff_directory_page_range": staff_directory_page_range,

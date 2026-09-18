@@ -7,9 +7,14 @@
 <section class="profile-shell">
   <div class="profile-header-bar">
     <h1>Profile</h1>
-    {% if show_staff_dashboard %}
-      <a href="{% url 'home:add_news' %}" class="profile-add-news-link" data-add-news-link> <b>+</b> NeWs</a>
-    {% endif %}
+    <div class="profile-header-actions">
+      {% if is_admin_user %}
+        <a href="{% url 'control:staff_create' %}" class="profile-add-news-link">+ Staff</a>
+      {% endif %}
+      {% if show_staff_dashboard %}
+        <a href="{% url 'home:add_news' %}" class="profile-add-news-link" data-add-news-link> <b>+</b> NeWs</a>
+      {% endif %}
+    </div>
   </div>
 
   <div class="profile-layout">
@@ -46,12 +51,38 @@
               aria-pressed="{{ user.receive_email_login_alert|yesno:'true,false' }}"
               data-newsletter-toggle
               data-enable-url="{% url 'home:profile_newsletter_toggle' %}"
-              data-enabled="{{ user.receive_email_login_alert|yesno:'true,false' }}">
+              data-enabled="{{ user.receive_email_login_alert|yesno:'true,false' }}"
+              data-on-text="Receiving login alert"
+              data-off-text="Not receiving login alert">
               <span class="toggle-thumb"></span>
             </button>
           </div>
         </div>
       </div>
+
+      {% if is_staff_user and profile %}
+      <div class="profile-setting-block">
+        <div class="setting-row">
+          <div class="setting-copy">
+            <span class="setting-label">Story view alert</span>
+            <small>{% if profile.get_blog_notification %}Receiving view reminders{% else %}Not receiving view reminders{% endif %}</small>
+          </div>
+          <div class="newsletter-toggle-wrap">
+            <button
+              type="button"
+              class="toggle-switch {% if profile.get_blog_notification %}is-on{% endif %}"
+              aria-pressed="{{ profile.get_blog_notification|yesno:'true,false' }}"
+              data-newsletter-toggle
+              data-enable-url="{% url 'home:profile_blog_notification_toggle' %}"
+              data-enabled="{{ profile.get_blog_notification|yesno:'true,false' }}"
+              data-on-text="Receiving view reminders"
+              data-off-text="Not receiving view reminders">
+              <span class="toggle-thumb"></span>
+            </button>
+          </div>
+        </div>
+      </div>
+      {% endif %}
 
       <div class="profile-actions profile-image-actions">
         <div class="profile-image-link-form">
@@ -63,6 +94,18 @@
           </div>
         </div>
         <button type="button" class="profile-action-btn">Upload avatar (file)</button>
+      </div>
+
+      <!--  LOG OUT ALL SESSIONS: available to every signed in user. Ends every
+            session the account holds, including the one that clicked, so the
+            page then redirects to the login page. -->
+      <div class="profile-setting-block profile-logout-all-block">
+        <button type="button" class="profile-action-btn logout-all-btn"
+                data-logout-all-sessions
+                data-endpoint="{% url 'home:profile_logout_all' %}">
+          Log out all sessions
+        </button>
+        <p class="staff-record-feedback" data-logout-all-feedback role="status" aria-live="polite"></p>
       </div>
     </aside>
 
@@ -143,6 +186,28 @@
               </select>
               <small>{% if is_admin_user %}Pronoun identification.{% else %}Admin only.{% endif %}</small>
             </div>
+
+            <!--  OWN ROLE: an admin may change their own role here, on their
+                  own profile. Options come from StaffConfig, so editing
+                  STAFF_ROLE updates this dropdown everywhere at once. It posts
+                  to its own endpoint; the form's Save changes never touches
+                  role. -->
+            {% if is_admin_user %}
+            <div class="staff-field" data-own-role-block>
+              <label for="staff-role">Role</label>
+              <select id="staff-role" data-own-role-input>
+                {% if profile and profile.role in protected_roles %}
+                  <option value="{{ profile.role }}" selected disabled>{{ profile.get_role_display }} (locked)</option>
+                {% endif %}
+                {% for value, label in role_choices %}
+                  <option value="{{ value }}" {% if profile and profile.role == value %}selected{% endif %}>{{ label }}</option>
+                {% endfor %}
+              </select>
+              <small>Every change stamps your last promotion date.</small>
+              <button type="button" class="profile-action-btn" data-own-role-save data-endpoint="{% url 'control:own_role' %}">Update role</button>
+              <p class="staff-record-feedback" data-own-role-feedback role="status" aria-live="polite"></p>
+            </div>
+            {% endif %}
 
             <div class="staff-field">
               <label for="staff-twitter">X (Twitter) URL</label>

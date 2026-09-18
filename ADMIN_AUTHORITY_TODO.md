@@ -44,6 +44,8 @@ already returns True for both. Do not change that helper.
 | 2 | All seven `render()` template paths in `HOME/views.py` uppercased to `HOME/...`. |
 | 3 | `ADMIN` app registered in `INSTALLED_APPS`, given `urls.py` with `app_name = "control"`, mounted at `/control/`. |
 | 4 | `debug_auth_check.py` deleted from the project root. |
+| 5 | `LoginView.post` no longer 500s on a wrong email (`None.check_password`) or on the non AJAX wrong-password path (undefined `return_to`). Both now return the invalid credentials response. The login page also reloads itself when the submit response is not JSON, which is the stale CSRF pair case that used to need a manual refresh. |
+| 6 | `.profile-summary` no longer viewport clamps (`max-height` + `overflow: hidden` removed, sticky dropped). That clamp hid the bottom of the staff record aside on desktop and pushed the logout-all block behind the following cards on mobile. |
 
 Known and deliberately **not** fixed, per the owner: the AJAX JSON in
 `ProfileBookmarksView`, `ProfileHistoryView` and `ProfileCommentsView` returns
@@ -110,13 +112,16 @@ An account with no `StaffProfile` renders the page but every write returns 409.
 NoName/settings.py                       INSTALLED_APPS += 'ADMIN'
 NoName/urls.py                           path('control/', include("ADMIN.urls"))
 SERVICE_INTERNAL/config.py               + StaffConfig
-HOME/views.py                            template path casing; staff directory context
-HOME/templates/HOME/profile.html         label fix; staff directory panel at top of main
-HOME/static/home/js/interactions.js      staff + staffPublished list configs; record write controls
-HOME/static/home/css/profile.css         .staff-directory-list, .staff-record-* (appended)
+SERVICE_INTERNAL/sessions.py             NEW, shared drop_sessions_for walk
+HOME/views.py                            template path casing; staff directory context; blog notification toggle; logout-all view; role context
+HOME/urls.py                             + profile_blog_notification_toggle, profile_logout_all
+HOME/templates/HOME/profile.html         label fix; staff directory panel; story view alert toggle; own role select; logout-all block; + Staff link
+HOME/static/home/js/interactions.js      staff + staffPublished list configs; record write controls; per-toggle labels; own role / logout-all / add staff handlers
+HOME/static/home/css/profile.css         .staff-directory-list, .staff-record-*, header actions, logout-all, staff-create (appended)
 ADMIN/views.py                           NEW
-ADMIN/urls.py                            NEW
-ADMIN/templates/ADMIN/staff_detail.html  NEW
+ADMIN/urls.py                            NEW, + staff_create, own_role
+ADMIN/templates/ADMIN/staff_detail.html  NEW, toggle-knob renamed to toggle-thumb (had no CSS)
+ADMIN/templates/ADMIN/staff_create.html  NEW
 debug_auth_check.py                      DELETED
 ```
 
@@ -125,91 +130,81 @@ debug_auth_check.py                      DELETED
 | Name | Path | Method | Who |
 |---|---|---|---|
 | `control:staff_directory` | `/control/staff/` | GET | admin+ |
+| `control:staff_create` | `/control/staff/new/` | GET, POST | admin+ |
 | `control:staff_detail` | `/control/staff/<id>/` | GET | admin+ |
 | `control:staff_published` | `/control/staff/<id>/published/` | GET | admin+ |
 | `control:staff_tribute` | `/control/staff/<id>/tribute/` | POST | superuser |
 | `control:staff_role` | `/control/staff/<id>/role/` | POST | superuser |
 | `control:staff_status` | `/control/staff/<id>/status/` | POST | superuser |
+| `control:own_role` | `/control/me/role/` | POST | admin+ (acts on self only) |
+| `home:profile_blog_notification_toggle` | `/profile/settings/blog-notification/` | POST | staff+ |
+| `home:profile_logout_all` | `/profile/settings/logout-all/` | POST | any signed-in user |
 
 ---
 
 ## What still needs doing
 
-### TODO 1 — Admin edits their own role, on their own profile page
+Nothing from the four-TODO list. All four shipped on 2026-09-17, verified
+against the real `db.sqlite3` with `django.test.Client` plus `RequestFactory`
+fake users for the plain-admin branch (41/41 checks passed; every mutated
+record was captured and restored).
 
-**Not the detail page.** An admin has read-only access to *other* people's
-records, but may change **their own** role freely, and every change stamps
-`last_promotion` with today.
+### DONE — TODO 1, admin's own role on their own profile
 
-- Add a role `<select>` to the existing staff block in `profile.html`, near the
-  other own-profile fields, rendered only when `is_admin_user` is true.
-- Populate it from `StaffConfig.role_choices()` passed in from `ProfileView`.
-  Do not hard code the options.
-- New POST endpoint. `ADMIN/urls.py` is the right home since this is an admin
-  privilege; something like `control:own_role`. It must act on
-  `request.user`'s own `StaffProfile` only, never take a target ID.
-- Reject any value outside `StaffConfig.role_choices()`, which already excludes
-  Founder.
-- On change, set `role` and `last_promotion = timezone.localdate()`, and
-  `save(update_fields=[...])`.
-- Non-admin staff must not see this control and must get a 403 from the
-  endpoint.
+- Role `<select>` added to the staff form in `profile.html`, rendered only for
+  `is_admin_user`, options from `StaffConfig.role_choices()` passed in by
+  `ProfileView` (`role_choices` / `protected_roles` context keys).
+- `control:own_role` (`/control/me/role/`, POST) acts on `request.user` only,
+  never takes a target id. Values outside `StaffConfig.role_choices()` are
+  rejected (Founder included); same-role is a "Role unchanged" no-op; every
+  real change stamps `last_promotion = timezone.localdate()` with
+  `save(update_fields=["role", "last_promotion"])`. Plain staff get 403, no
+  profile gets 409.
+- The role select posts to its own endpoint via its own button; the staff
+  form's "Save changes" never carries role.
 
-Reuse the feedback pattern from the detail page write controls in
-`interactions.js` rather than inventing a new one.
+### DONE — TODO 2, story view alert toggle
 
-### TODO 2 — Blog notification toggle, for staff and admin
+- Toggle rendered directly under the Alert toggle in the `profile.html` aside,
+  shown only when `is_staff_user and profile`. Markup copies the existing
+  toggle: `button.toggle-switch`, `is-on`, `aria-pressed`, `span.toggle-thumb`.
+  (The handover said `toggle-knob`, but the real existing toggle uses
+  `toggle-thumb`; `staff_detail.html` was still using `toggle-knob`, which had
+  no CSS at all, so its knob rendered invisible. Both now use `toggle-thumb`.)
+- `home:profile_blog_notification_toggle` (`/profile/settings/blog-notification/`,
+  POST) lives in `HOME.views` next to the other profile toggles, returns
+  `{detail, enabled, status}`, and answers 409 with a clear message when the
+  staff member has no `StaffProfile`. 403 for anyone without staff access.
+- The shared JS toggle handler now reads per-toggle `data-on-text` /
+  `data-off-text` labels instead of hard coding "Receiving updates", so both
+  toggles keep correct copy through optimistic flips and rollbacks.
 
-The field is `StaffProfile.get_blog_notification` (post-view reminders).
+### DONE — TODO 3, log out all sessions
 
-- Render a toggle **directly underneath** the existing Alert / login-alert
-  toggle in the `profile.html` aside. Staff and admin only; plain members have
-  no `StaffProfile` and must not see it.
-- Copy the markup of the existing toggle exactly: `button.toggle-switch`,
-  `is-on` class, `aria-pressed`, `span.toggle-knob`.
-- New POST endpoint flipping the boolean and returning
-  `{detail, enabled, status}`, matching `ProfileNewsletterToggleView`'s response
-  shape so the existing JS handler pattern carries over.
-- This is a staff-level setting, not an admin power, so it belongs in
-  `HOME/views.py` next to the other profile toggles, not in `ADMIN`.
-- Handle the case where the staff member somehow has no `StaffProfile`: do not
-  crash, return a clear message.
+- The session walk moved to `SERVICE_INTERNAL/sessions.py::drop_sessions_for`
+  (with the growth caveat comment); `ADMIN.views` and `HOME.views` both import
+  it. No duplicate copy left.
+- Button sits at the bottom of the `profile.html` aside for every signed-in
+  user, confirms before firing, and POSTs to
+  `home:profile_logout_all` (`/profile/settings/logout-all/`). The view deletes
+  every session, calls `django.contrib.auth.logout`, and returns JSON with
+  `redirect_to`; the JS redirects to the login page so no dead page is left.
 
-### TODO 3 — "Log out all sessions"
+### DONE — TODO 4, add staff
 
-- Button at the **bottom of the aside** in `profile.html`, below every existing
-  setting block. Available to any signed-in user, not just staff.
-- Deletes **every** session belonging to the user, the current one included, so
-  they are signed out and land on the login page.
-- `ADMIN/views.py::_drop_sessions_for(account)` already does exactly this walk.
-  **Move it somewhere shared rather than duplicating it** — `SERVICE_INTERNAL`
-  is the natural home — then have both callers import it. Do not leave two
-  copies.
-- Confirm before firing; this is destructive from the user's point of view.
-- After the POST succeeds the JS should redirect to login rather than leaving a
-  dead page behind.
-- The session walk decodes every row in the table. Fine at current scale, worth
-  a comment noting it will need an index-backed approach if the site grows.
-
-### TODO 4 — "Add staff" button and creation page
-
-- Button to the **left** of the existing `+ NeWs` link in the `profile-header-bar`
-  of `profile.html`. Admin and superuser only.
-- Opens a **full page form**, not a modal. Put it in `ADMIN` as
-  `control:staff_create`.
-- Fields: email, password **prefilled with `NewStaff`** (the staff member
-  changes it later themselves), plus whatever the form needs to build a usable
-  `StaffProfile`. Ask the owner before adding fields beyond full name, gender
-  and role.
-- Role options from `StaffConfig.role_choices()`. Founder is excluded already.
-- An admin may create another **admin**. **Nothing here may ever set
-  `is_superuser=True`**, regardless of input. Whitelist the flags you set rather
-  than reading them from POST data.
-- Create the `Auth` row and its `StaffProfile` together; an account without a
-  profile is exactly the broken state the directory panel now flags.
-- Reject duplicate emails with a readable error, not a 500.
-- Check `AUTHENTICATION/views.py::RegisterView` first and follow its
-  normalisation and hashing, do not hand-roll password handling.
+- `+ Staff` link to the left of `+ NeWs` in the `profile-header-bar`, admin
+  and superuser only, opens the full page `control:staff_create`
+  (`/control/staff/new/`).
+- Fields per the owner's decision: email, password prefilled `NewStaff`, full
+  name, gender, role, plus an "also grant admin access" checkbox. Nothing
+  else; the new staff member fills in the rest themselves.
+- `Auth` and `StaffProfile` rows are created together in one transaction.
+  Flags are whitelisted (`is_staff` always, `is_admin` only from the
+  checkbox); nothing on the page can set `is_superuser`. Password handling
+  goes through `AuthManager.create_staff` → `set_password`, matching
+  `RegisterView`. Duplicate email returns a readable 400, Founder is rejected,
+  and non-admins are redirected away from the page entirely.
+- Success redirects to the new staff member's `/control/staff/<id>/` record.
 
 ---
 

@@ -67,5 +67,9 @@ class Auth(AbstractBaseUser):
         return self.has_module_perms(app_label)
 
     def __str__(self):
-        return f"{self.email}: staff: {self.is_staff}, admin: {self.is_admin}, superuser: {self.is_superuser}"
+        staff_type = "Member"
+        if self.is_admin: staff_type = "Admin"
+        elif self.is_superuser: staff_type = "Special Admin"
+        
+        return f"{self.email}: staff type : {staff_type}"
     

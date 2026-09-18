@@ -131,8 +131,16 @@
             return response.text().then(function (text) { return { ok: response.ok, text: text }; });
           })
           .then(function (result) {
-            var payload = {};
+            var payload = null;
             try { payload = JSON.parse(result.text || '{}') || {}; } catch (e) { /* non JSON body */ }
+            /*  A body that is not JSON is the CSRF failure page: the rendered
+                token no longer matches the csrf cookie because a login or
+                logout in another tab rotated it. Reloading mints a fresh
+                page and token pair, which the user used to do by hand. */
+            if (payload === null) {
+              window.location.reload();
+              return;
+            }
             showAuthToast(payload.detail || (result.ok ? 'Login successful. Redirecting' : 'Could not sign in.'));
             if (!result.ok) {
               setSubmitBusy(false);

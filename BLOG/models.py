@@ -42,7 +42,8 @@ class Blog(models.Model):
         text = self.content or ""
         return len(re.findall(r"\b\S+\b", text))
 
-    @property
+    from functools import cached_property
+    @cached_property
     def author_name(self):
         from STAFF.models import StaffProfile
 
